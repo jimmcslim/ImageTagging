@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using ImageMagick;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +17,7 @@ namespace ImageTagging
     public static class ProcessBlobs
     {
         [FunctionName("ProcessBlobs")]
+        // ReSharper disable once UnusedMember.Global
         public static async Task RunOrchestrator([OrchestrationTrigger] DurableOrchestrationContext context,
             ILogger log)
         {
@@ -53,18 +53,10 @@ namespace ImageTagging
         
         [FunctionName("EnumerateBlobs")]
         public static async Task<List<StorageAccountItem>> EnumerateBlobs([ActivityTrigger] string path,
-            ILogger log)
+            IBinder binder, ILogger log)
         {
-            var ac = StorageAccount.NewFromConnectionString(Environment.GetEnvironmentVariable("ImageStorageAccount",
-                EnvironmentVariableTarget.Process));
-            var blobClient = ac.CreateCloudBlobClient();
-
-            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            var containerName = pathSegments.First();
-            var container = blobClient.GetContainerReference(containerName);
-
-            var getBlobs = GetBlobsForPath(container, pathSegments, log);
-
+            var getBlobs = await GetBlobsForPath(path, binder, log);
+            
             var results = new List<StorageAccountItem>();
             BlobContinuationToken continuationToken = null;
             do
@@ -74,38 +66,29 @@ namespace ImageTagging
                 results.AddRange(GetItems(path, response.Results));
             } while (continuationToken != null);
 
-            log.LogInformation($"Showing {results.Count} results...");
-            foreach (var result in results)
-            {
-                log.LogInformation($"Type: {result.Type} Path: {result.Path}");
-            }
-            
             return results;
         }
 
-        private static Func<BlobContinuationToken, Task<BlobResultSegment>> GetBlobsForPath(CloudBlobContainer container,
-            IReadOnlyList<string> pathSegments, ILogger log)
+        private static async Task<Func<BlobContinuationToken, Task<BlobResultSegment>>> GetBlobsForPath(
+            string path,
+            IBinder binder,
+            ILogger log)
         {
-            Func<BlobContinuationToken, Task<BlobResultSegment>> getBlobs;
-            if (pathSegments.Count == 1)
+            var attr = new BlobAttribute(path) { Connection = "ImageStorageAccount" };
+            if (path.Split('/').Length == 1)
             {
-                getBlobs = container.ListBlobsSegmentedAsync;
+                var container = await binder.BindAsync<CloudBlobContainer>(attr);
                 log.LogInformation($"Operating on container {container.Name}.");
+                return container.ListBlobsSegmentedAsync;
             }
             else
             {
-                var directory = pathSegments
-                    .Skip(2)
-                    .Aggregate(container.GetDirectoryReference(pathSegments[1]),
-                        (dir, s) => dir.GetDirectoryReference(s));
-
-                getBlobs = directory.ListBlobsSegmentedAsync;
+                var directory = await binder.BindAsync<CloudBlobDirectory>(attr);
                 log.LogInformation($"Operating on directory {directory.Prefix}");
+                return directory.ListBlobsSegmentedAsync;
             }
-
-            return getBlobs;
         }
-
+        
         private static IEnumerable<StorageAccountItem> GetItems(string path, IEnumerable<IListBlobItem> items)
         {
             foreach (var item in items)
@@ -152,6 +135,7 @@ namespace ImageTagging
         }
 
         [FunctionName("ProcessImage")]
+        // ReSharper disable once UnusedMember.Global
         public static async Task ProcessImage([ActivityTrigger] string path, ILogger log)
         {
             log.LogInformation($"Processing image {path}.");
