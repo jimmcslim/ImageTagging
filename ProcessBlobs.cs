@@ -23,15 +23,15 @@ namespace ImageTagging
 
         private static async Task ProcessItem(DurableOrchestrationContext context, StorageAccountItem item, ILogger log)
         {
-            switch (item.Type)
+            switch (item)
             {
-                case "directory":
-                    log.LogInformation($"Recursing into {item.Path}");
-                    await context.CallSubOrchestratorAsync("ProcessBlobs", item.Path);
+                case Directory d:
+                    log.LogInformation($"Recursing into {d.Path}");
+                    await context.CallSubOrchestratorAsync("ProcessBlobs", d.Path);
                     break;
-                case "blob":
+                case Image p:
                     // Actually process the photo.
-                    await context.CallActivityAsync("ProcessImage", item.Path);
+                    await context.CallActivityAsync("ProcessImage", p.Path);
                     break;
             }
         }

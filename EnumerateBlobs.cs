@@ -71,27 +71,14 @@ namespace ImageTagging
             }
         }
 
-        private static StorageAccountItem GetItemForDirectory(string path, CloudBlobDirectory d)
-        {
-            var item = new StorageAccountItem
-            {
-                Type = "directory",
-                Path = $"{path}/{d.Prefix.Split('/', StringSplitOptions.RemoveEmptyEntries).Last()}"
-            };
-            return item;
-        }
+        private static StorageAccountItem GetItemForDirectory(string path, CloudBlobDirectory d) => 
+            new Directory($"{path}/{d.Prefix.Split('/', StringSplitOptions.RemoveEmptyEntries).Last()}");
 
-        private static StorageAccountItem GetItemForImage(string path, CloudBlockBlob b)
+        private static StorageAccountItem GetItemForImage(string path, CloudBlob b)
         {
             var filename = b.Name.Split('/', StringSplitOptions.RemoveEmptyEntries).Last();
             var extension = Path.GetExtension(filename);
-            if (!".jpg".Equals(extension, StringComparison.InvariantCultureIgnoreCase)) { return null; }
-            var item = new StorageAccountItem
-            {
-                Type = "blob",
-                Path = $"{path}/{filename}"
-            };
-            return item;
+            return !".jpg".Equals(extension, StringComparison.InvariantCultureIgnoreCase) ? null : new Image($"{path}/{filename}");
         }
     }
 }
